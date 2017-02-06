@@ -1,56 +1,47 @@
-#include <SPI.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_PCD8544.h>
+#include <avr/power.h>
 
-#define voltageDivider 0.203389830508
-#define supplyVoltage 5.0
+#define adcRange 1023
+#define dividerResistor1 22000.0
+#define dividerResistor2 4900.0
+#define supplyVoltage 3.3
 #define chargeVoltage 13.5
 #define chargePwmPin 3
-#define solarVoltagePin A0
 #define batteryVoltagePin A1
 
-Adafruit_PCD8544 display = Adafruit_PCD8544(12, 11, 10, 9, 8);
-uint8_t duty = 0;
+int duty = 0;
+int chargeVoltageADC = ((chargeVoltage * (dividerResistor2 / (dividerResistor1 + dividerResistor2))) / supplyVoltage) * adcRange;
 
 void setup() {
-  display.begin();
-  display.setContrast(50);
 
-  display.display();
-  delay(2000);
-  display.clearDisplay();
+  clock_prescale_set(clock_div_32);
+  power_twi_disable();
+  power_spi_disable() ;
+  TCCR2B = (TCCR2B & 0b11111000) | 0x02;
 
-  pinMode(solarVoltagePin, INPUT);
   pinMode(batteryVoltagePin, INPUT);
   pinMode(chargePwmPin, OUTPUT);
 
   analogWrite(chargePwmPin, 0);
 }
 
-double readVoltage(uint8_t voltagePin) {
-  analogRead(voltagePin);
-  delay(10);
-  return ((analogRead(voltagePin) * supplyVoltage) / 1024) / voltageDivider;
-}
-
 void loop() {
-  double solarVoltage = readVoltage(solarVoltagePin);
-  double batteryVoltage = readVoltage(batteryVoltagePin);
+    analogRead(batteryVoltagePin);
+    delay(10);
+    int batteryVoltageADC = analogRead(batteryVoltagePin);
+    int difference = abs(batteryVoltageADC - chargeVoltageADC);
 
-  if (batteryVoltage < chargeVoltage && duty < 255t) {
-    duty++;
-  }
-  if (batteryVoltage > chargeVoltage && duty > 0) {
-    duty--;
-  }
-  analogWrite(chargePwmPin, duty);
+    if (batteryVoltageADC < chargeVoltageADC) {
+      duty += difference;
 
-  display.clearDisplay();
-  display.print("SOLAR ");
-  display.println(solarVoltage);
-  display.print("BAT ");
-  display.println(batteryVoltage);
-  display.print("DUTY ");
-  display.println(duty);
-  display.display();
+    }
+    if (batteryVoltageADC > chargeVoltageADC) {
+      duty -= difference;
+    }
+
+    if (duty < 0) duty = 0;
+    if (duty > 255) duty = 255;
+
+    analogWrite(chargePwmPin, duty);
 }
+
+
